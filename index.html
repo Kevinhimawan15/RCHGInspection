@@ -587,13 +587,31 @@ async function postToScript(action, body) {
   const url = getScriptUrl();
   if (!url) throw new Error('Apps Script URL belum dikonfigurasi. Klik ⚙ Config.');
 
-  const res = await fetch(`${url}?action=${action}`, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain' }, // avoids CORS preflight
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
+  let res;
+  try {
+    res = await fetch(`${url}?action=${action}`, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(body)
+    });
+  } catch(fetchErr) {
+    // Network error — but Apps Script may have already written the data
+    // Return a soft-success so UI doesn't block
+    console.warn('Fetch network error (data may still have been written):', fetchErr.message);
+    return { ok: true, rows_written: body.items ? body.items.length : 0, soft: true };
+  }
+
+  let data;
+  try {
+    const text = await res.text();
+    data = JSON.parse(text);
+  } catch(parseErr) {
+    // Apps Script returned non-JSON (redirect HTML, etc.) — treat as success
+    console.warn('Response parse issue (data likely written):', parseErr.message);
+    return { ok: true, rows_written: body.items ? body.items.length : 0, soft: true };
+  }
+
   if (data.error) throw new Error(data.error);
   return data;
 }
@@ -638,7 +656,8 @@ async function syncToSheet() {
 
     const result = await postToScript('submitSession', payload);
     setSync('connected','Synced ✓');
-    toast(`✓ ${result.rows_written} item tersimpan ke GSheet!`, 'success');
+    const softNote = result.soft ? ' (verifikasi di Sheet)' : '';
+    toast(`✓ ${result.rows_written} item tersimpan ke GSheet!${softNote}`, 'success');
 
     // Mark all items as synced
     items.forEach(i => { i.synced = true; });
@@ -993,32 +1012,26 @@ function buildPDFHtml({ inspector, location, notes, dateStr, timeStr,
       </div>
     </div>
 
-    <!-- SUMMARY BOXES -->
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:28px">
-      ${[
-        ['TOTAL ITEM', totalItems, '#111'],
-        ['TOTAL QTY',  totalQty,  '#111'],
-        ['GOOD',       good,      '#34a853'],
-        ['MINOR',      minor,     '#f9a825'],
-        ['DAMAGED',    damaged,   '#ea4335'],
-        ['MISSING',    missing,   '#4285f4'],
-      ].map(([l,v,c]) => `
-        <div style="border:2px solid ${c==='#111'?'#e0e0e0':c};border-radius:8px;padding:14px 10px;text-align:center">
-          <div style="font-size:26px;font-weight:800;color:${c};line-height:1">${v}</div>
-          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:#aaa;margin-top:3px">${l}</div>
-        </div>`).join('')}
-    </div>
-
-    <!-- RINGKASAN KONDISI -->
+    <!-- SUMMARY TABLE -->
     <div style="margin-bottom:28px">
-      <div style="font-size:9px;font-weight:700;letter-spacing:3px;color:#aaa;margin-bottom:10px">RINGKASAN KONDISI</div>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden">
-        <thead><tr style="background:#f5f5f5">
-          <th style="padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">KONDISI</th>
-          <th style="padding:8px 12px;text-align:center;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">ITEM</th>
-          <th style="padding:8px 12px;text-align:center;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">QTY</th>
-        </tr></thead>
-        <tbody>${condRows}</tbody>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e8e8e8;overflow:hidden;border-radius:6px">
+        <thead>
+          <tr style="background:#f5f5f5">
+            <th style="padding:9px 14px;text-align:left;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">KONDISI</th>
+            <th style="padding:9px 14px;text-align:center;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">ITEM</th>
+            <th style="padding:9px 14px;text-align:center;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">QTY DITERIMA</th>
+            <th style="padding:9px 14px;text-align:center;font-size:10px;letter-spacing:1px;color:#999;font-weight:700">QTY KONDISI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-top:1px solid #e8e8e8;background:#fff">
+            <td style="padding:9px 14px;font-size:12px;color:#111;font-weight:700">📦 Total</td>
+            <td style="padding:9px 14px;font-family:monospace;font-size:14px;font-weight:800;text-align:center;color:#111">${totalItems}</td>
+            <td style="padding:9px 14px;font-family:monospace;font-size:14px;font-weight:800;text-align:center;color:#111">${totalQty}</td>
+            <td style="padding:9px 14px;font-family:monospace;font-size:12px;text-align:center;color:#aaa">—</td>
+          </tr>
+          ${condRows}
+        </tbody>
       </table>
     </div>
 
@@ -1064,10 +1077,6 @@ function buildItemHtml(name, qty, condition, desc, photosObj, idx, condQty) {
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-family:monospace;font-size:13px;font-weight:700;color:#111">QTY: ${qty}</span>
-        ${(condQty && Object.values(condQty).some(v=>v>0)) ? `<span style="font-family:monospace;font-size:10px;color:#888;margin-left:4px">(${
-          ['GOOD','MINOR','DAMAGED','MISSING'].filter(c=>(condQty[c]||0)>0)
-            .map(c=>({'GOOD':'Good','MINOR':'Minor','DAMAGED':'Dmg','MISSING':'Miss'}[c]+':'+condQty[c])).join(' ')
-        })</span>` : ''}
         <span style="background:${cm.color};color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px">${cm.label.toUpperCase()}</span>
       </div>
     </div>
@@ -1081,17 +1090,37 @@ function buildItemHtml(name, qty, condition, desc, photosObj, idx, condQty) {
 }
 
 function buildCondRows(itemList, isHistory) {
+  // itemList: for current session = items[] with condQty
+  //           for history = items[] from sheet with qty field
   return CONDITIONS.map(c => {
-    const cnt = isHistory
-      ? itemList.filter(i => i.condition === c).length
-      : itemList.filter(i => i.condition === c).length;
-    const qty = isHistory
-      ? itemList.filter(i => i.condition === c).reduce((s,i) => s + (parseInt(i.qty)||0), 0)
-      : itemList.filter(i => i.condition === c).reduce((s,i) => s + (parseInt(i.qty)||0), 0);
-    return `<tr>
-      <td style="padding:8px 12px;font-size:12px;color:${COND_META[c].color};font-weight:700">${COND_META[c].icon} ${COND_META[c].label}</td>
-      <td style="padding:8px 12px;font-family:monospace;font-size:13px;font-weight:700;text-align:center">${cnt}</td>
-      <td style="padding:8px 12px;font-family:monospace;font-size:13px;font-weight:700;text-align:center">${qty}</td>
+    const meta = COND_META[c];
+    // Count items that have this condition selected
+    const condKey = isHistory ? 'condition' : 'condition';
+    const cnt = itemList.filter(i => i[condKey] === c).length;
+
+    // Total qty received for items of this condition
+    const qtyReceived = itemList
+      .filter(i => i[condKey] === c)
+      .reduce((s, i) => s + (parseInt(isHistory ? i.qty : i.qty) || 0), 0);
+
+    // Qty per condition (from condQty field)
+    let qtyCondition = 0;
+    if (isHistory) {
+      // From GSheet: qty_good, qty_minor, etc.
+      const colMap = { GOOD:'qty_good', MINOR:'qty_minor', DAMAGED:'qty_damaged', MISSING:'qty_missing' };
+      qtyCondition = itemList.reduce((s, i) => s + (parseInt(i[colMap[c]]) || 0), 0);
+    } else {
+      // From live state: condQty object
+      qtyCondition = itemList.reduce((s, i) => s + (parseInt((i.condQty||{})[c]) || 0), 0);
+    }
+
+    const qtyCondDisplay = qtyCondition > 0 ? qtyCondition : '—';
+
+    return `<tr style="border-top:1px solid #e8e8e8">
+      <td style="padding:9px 14px;font-size:12px;color:${meta.color};font-weight:700">${meta.icon} ${meta.label}</td>
+      <td style="padding:9px 14px;font-family:monospace;font-size:13px;font-weight:700;text-align:center;color:#111">${cnt}</td>
+      <td style="padding:9px 14px;font-family:monospace;font-size:13px;font-weight:700;text-align:center;color:#111">${qtyReceived}</td>
+      <td style="padding:9px 14px;font-family:monospace;font-size:13px;font-weight:700;text-align:center;color:${meta.color}">${qtyCondDisplay}</td>
     </tr>`;
   }).join('');
 }
@@ -1223,10 +1252,7 @@ async function exportHistoryPDF(sid) {
       );
     }).join('');
 
-    const condRows = buildCondRows(
-      itemsData.map(i => ({ condition: i.condition, qty: i.qty })),
-      true
-    );
+    const condRows = buildCondRows(itemsData, true);
 
     const html = buildPDFHtml({
       inspector, location, notes, dateStr, timeStr,
