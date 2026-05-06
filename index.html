@@ -363,10 +363,10 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', 
     <div class="stats-strip">
       <div class="sc"><div class="sv" id="s-total">0</div><div class="sl">TOTAL ITEM</div></div>
       <div class="sc"><div class="sv" id="s-qty">0</div><div class="sl">TOTAL QTY</div></div>
-      <div class="sc"><div class="sv ok" id="s-good">0</div><div class="sl">GOOD</div></div>
-      <div class="sc"><div class="sv warn" id="s-minor">0</div><div class="sl">MINOR</div></div>
-      <div class="sc"><div class="sv bad" id="s-damaged">0</div><div class="sl">DAMAGED</div></div>
-      <div class="sc"><div class="sv inf" id="s-missing">0</div><div class="sl">MISSING</div></div>
+      <div class="sc"><div class="sv ok" id="s-good">0</div><div class="sl">QTY GOOD</div></div>
+      <div class="sc"><div class="sv warn" id="s-minor">0</div><div class="sl">QTY MINOR</div></div>
+      <div class="sc"><div class="sv bad" id="s-damaged">0</div><div class="sl">QTY DAMAGED</div></div>
+      <div class="sc"><div class="sv inf" id="s-missing">0</div><div class="sl">QTY MISSING</div></div>
     </div>
 
     <div class="empty" id="empty">
@@ -397,33 +397,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', 
         </div>
 
         <div class="fsec">
-          <div class="stitle">02 — Kondisi Barang</div>
-          <div class="cond-grid">
-            <label class="copt" data-v="GOOD" onclick="setCond('GOOD')">
-              <input type="radio" name="cond" value="GOOD">
-              <div class="copt-icon">✅</div>
-              <div><div class="copt-name" style="color:var(--ok)">Good</div><div class="copt-desc">Lengkap, tidak ada masalah</div></div>
-            </label>
-            <label class="copt" data-v="MINOR" onclick="setCond('MINOR')">
-              <input type="radio" name="cond" value="MINOR">
-              <div class="copt-icon">⚠️</div>
-              <div><div class="copt-name" style="color:var(--warn)">Minor Issue</div><div class="copt-desc">Kerusakan kecil, masih oke</div></div>
-            </label>
-            <label class="copt" data-v="DAMAGED" onclick="setCond('DAMAGED')">
-              <input type="radio" name="cond" value="DAMAGED">
-              <div class="copt-icon">🔴</div>
-              <div><div class="copt-name" style="color:var(--bad)">Damaged</div><div class="copt-desc">Rusak, perlu klaim / retur</div></div>
-            </label>
-            <label class="copt" data-v="MISSING" onclick="setCond('MISSING')">
-              <input type="radio" name="cond" value="MISSING">
-              <div class="copt-icon">❓</div>
-              <div><div class="copt-name" style="color:var(--info)">Missing</div><div class="copt-desc">Tidak ada di shipment</div></div>
-            </label>
-          </div>
-        </div>
-
-        <div class="fsec">
-          <div class="stitle">03 — Foto per Kondisi</div>
+          <div class="stitle">02 — Qty &amp; Foto per Kondisi</div>
           <div class="photo-tabs" id="photo-tabs">
             <div class="ptab active-GOOD"    data-tab="GOOD"    onclick="switchPhotoTab('GOOD')">✅ Good</div>
             <div class="ptab active-MINOR"   data-tab="MINOR"   onclick="switchPhotoTab('MINOR')">⚠️ Minor</div>
@@ -434,7 +408,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', 
         </div>
 
         <div class="fsec">
-          <div class="stitle">04 — Deskripsi &amp; Catatan</div>
+          <div class="stitle">03 — Deskripsi &amp; Catatan</div>
           <textarea class="desc-ta" id="idesc" placeholder="Detail kondisi, catatan khusus, dsb..." oninput="sync()"></textarea>
         </div>
 
@@ -639,19 +613,27 @@ async function syncToSheet() {
       notes,
       total_items:   items.length,
       total_qty:     items.reduce((s,i)=>s+(parseInt(i.qty)||0),0),
-      good_count:    items.filter(i=>i.condition==='GOOD').length,
-      minor_count:   items.filter(i=>i.condition==='MINOR').length,
-      damaged_count: items.filter(i=>i.condition==='DAMAGED').length,
-      missing_count: items.filter(i=>i.condition==='MISSING').length,
-      items: items.map(i => ({
-        id:        i.id,
-        name:      i.name,
-        qty:       i.qty,
-        condition: i.condition,
-        condQty:   i.condQty || { GOOD:0, MINOR:0, DAMAGED:0, MISSING:0 },
-        photos:    i.photos,
-        desc:      i.desc
-      }))
+      good_count:    items.reduce((s,i)=>s+(parseInt((i.condQty||{}).GOOD)||0),0),
+      minor_count:   items.reduce((s,i)=>s+(parseInt((i.condQty||{}).MINOR)||0),0),
+      damaged_count: items.reduce((s,i)=>s+(parseInt((i.condQty||{}).DAMAGED)||0),0),
+      missing_count: items.reduce((s,i)=>s+(parseInt((i.condQty||{}).MISSING)||0),0),
+      items: items.map(i => {
+        const cq = i.condQty || {};
+        const hasAnyCondQty = Object.values(cq).some(v => (parseInt(v)||0) > 0);
+        const dominant = hasAnyCondQty
+          ? ['GOOD','MINOR','DAMAGED','MISSING']
+              .reduce((a,b) => (parseInt(cq[b])||0) > (parseInt(cq[a])||0) ? b : a, 'GOOD')
+          : (i.condition || '');
+        return {
+          id:        i.id,
+          name:      i.name,
+          qty:       i.qty,
+          condition: dominant,
+          condQty:   cq,
+          photos:    i.photos,
+          desc:      i.desc
+        };
+      })
     };
 
     const result = await postToScript('submitSession', payload);
@@ -682,7 +664,6 @@ function addItem() {
   const id = generateId('ITM');
   items.push({
     id, name:'', qty:0,
-    condition:'',
     condQty:{ GOOD:0, MINOR:0, DAMAGED:0, MISSING:0 },
     photos:{ GOOD:[], MINOR:[], DAMAGED:[], MISSING:[] },
     desc:'', saved:false, synced:false
@@ -701,15 +682,9 @@ function openItem(id) {
   document.getElementById('qty').value   = item.qty;
   document.getElementById('idesc').value = item.desc;
 
-  document.querySelectorAll('.copt').forEach(o => o.classList.remove('sel'));
-  if (item.condition) {
-    const el = document.querySelector(`.copt[data-v="${item.condition}"]`);
-    if (el) el.classList.add('sel');
-  }
-
   if (!item.condQty) item.condQty = { GOOD:0, MINOR:0, DAMAGED:0, MISSING:0 };
   buildPhotoSections();
-  switchPhotoTab(item.condition || 'GOOD');
+  switchPhotoTab('GOOD');
   renderList();
 }
 
@@ -721,17 +696,6 @@ function sync() {
   item.qty   = parseInt(document.getElementById('qty').value) || 0;
   item.desc  = document.getElementById('idesc').value;
   item.synced = false;
-  renderList(); updateStats();
-  saveToLocal();
-}
-
-function setCond(v) {
-  document.querySelectorAll('.copt').forEach(o => o.classList.remove('sel'));
-  document.querySelector(`.copt[data-v="${v}"]`).classList.add('sel');
-  const item = getItem(); if (!item) return;
-  item.condition = v;
-  item.synced = false;
-  switchPhotoTab(v);
   renderList(); updateStats();
   saveToLocal();
 }
@@ -775,7 +739,8 @@ function saveItem() {
   const item = getItem(); if (!item) return;
   sync();
   if (!item.name.trim()) { toast('Nama barang wajib diisi!','error'); return; }
-  if (!item.condition)   { toast('Pilih kondisi barang!','error'); return; }
+  const hasQty = Object.values(item.condQty||{}).some(v=>(parseInt(v)||0)>0);
+  if (!hasQty) { toast('Isi minimal 1 jumlah kondisi barang!','error'); return; }
   item.saved  = true;
   item.synced = false;
   renderList(); updateStats();
@@ -946,14 +911,11 @@ function renderList() {
       ${thumbHtml}
       <div class="imeta">
         <div class="iname">${item.name||'<span style="color:var(--text3)">Tanpa Nama</span>'}</div>
-        <div class="isub">qty ${item.qty}${
-          (item.condQty && Object.values(item.condQty).some(v=>v>0))
-            ? ' · ' + ['GOOD','MINOR','DAMAGED','MISSING'].filter(c=>(item.condQty[c]||0)>0)
-                .map(c=>({'GOOD':'✅','MINOR':'⚠️','DAMAGED':'🔴','MISSING':'❓'}[c]+item.condQty[c])).join(' ')
-            : ''
+        <div class="isub">Diterima: ${item.qty} · ${
+          ['GOOD','MINOR','DAMAGED','MISSING'].filter(c=>(item.condQty||{})[c]>0)
+            .map(c=>({'GOOD':'✅','MINOR':'⚠️','DAMAGED':'🔴','MISSING':'❓'}[c]+(item.condQty[c]||0))).join(' ') || '—'
         }</div>
       </div>
-      <span class="cbadge cb-${item.condition}">${item.condition||'—'}</span>
       <div class="isync-dot ${dotClass}" title="${dotClass}"></div>
     </div>`;
   }).join('');
@@ -964,10 +926,10 @@ function updateStats() {
   const qty   = items.reduce((s,i)=>s+(parseInt(i.qty)||0),0);
   document.getElementById('s-total').textContent   = total;
   document.getElementById('s-qty').textContent     = qty;
-  document.getElementById('s-good').textContent    = items.filter(i=>i.condition==='GOOD').length;
-  document.getElementById('s-minor').textContent   = items.filter(i=>i.condition==='MINOR').length;
-  document.getElementById('s-damaged').textContent = items.filter(i=>i.condition==='DAMAGED').length;
-  document.getElementById('s-missing').textContent = items.filter(i=>i.condition==='MISSING').length;
+  document.getElementById('s-good').textContent    = items.reduce((s,i)=>s+(parseInt((i.condQty||{}).GOOD)||0),0);
+  document.getElementById('s-minor').textContent   = items.reduce((s,i)=>s+(parseInt((i.condQty||{}).MINOR)||0),0);
+  document.getElementById('s-damaged').textContent = items.reduce((s,i)=>s+(parseInt((i.condQty||{}).DAMAGED)||0),0);
+  document.getElementById('s-missing').textContent = items.reduce((s,i)=>s+(parseInt((i.condQty||{}).MISSING)||0),0);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1095,13 +1057,16 @@ function buildCondRows(itemList, isHistory) {
   return CONDITIONS.map(c => {
     const meta = COND_META[c];
     // Count items that have this condition selected
-    const condKey = isHistory ? 'condition' : 'condition';
-    const cnt = itemList.filter(i => i[condKey] === c).length;
+    // Count items that have ANY qty in this condition
+    const cnt = itemList.filter(i => {
+      if (isHistory) return i.condition === c;
+      return (parseInt((i.condQty||{})[c])||0) > 0;
+    }).length;
 
-    // Total qty received for items of this condition
+    // Total qty received
     const qtyReceived = itemList
-      .filter(i => i[condKey] === c)
-      .reduce((s, i) => s + (parseInt(isHistory ? i.qty : i.qty) || 0), 0);
+      .filter(i => isHistory ? i.condition === c : (parseInt((i.condQty||{})[c])||0) > 0)
+      .reduce((s, i) => s + (parseInt(i.qty) || 0), 0);
 
     // Qty per condition (from condQty field)
     let qtyCondition = 0;
@@ -1181,9 +1146,12 @@ async function exportPDF() {
     const damaged    = items.filter(i => i.condition==='DAMAGED').length;
     const missing    = items.filter(i => i.condition==='MISSING').length;
 
-    const itemsHtml = items.map((item, idx) =>
-      buildItemHtml(item.name, item.qty, item.condition, item.desc, item.photos || {}, idx, item.condQty || {})
-    ).join('');
+    const itemsHtml = items.map((item, idx) => {
+      const cq = item.condQty || {};
+      const dominant = ['GOOD','MINOR','DAMAGED','MISSING']
+        .reduce((a,b) => (parseInt(cq[b])||0) > (parseInt(cq[a])||0) ? b : a, 'GOOD');
+      return buildItemHtml(item.name, item.qty, dominant, item.desc, item.photos || {}, idx, cq);
+    }).join('');
 
     const condRows = buildCondRows(items, false);
 
@@ -1342,7 +1310,11 @@ function renderHistory() {
                       ${item.description ? `<div class="hitem-desc">${item.description}</div>` : ''}
                     </div>
                     <div class="hitem-qty">×${item.qty}</div>
-                    <span class="cbadge cb-${item.condition}">${item.condition || '—'}</span>
+                    ${(()=>{
+                      const c=item.condition||'';
+                      const labels={'GOOD':'✅ Good','MINOR':'⚠️ Minor','DAMAGED':'🔴 Damaged','MISSING':'❓ Missing'};
+                      return `<span class="cbadge cb-${c}">${labels[c]||c||'—'}</span>`;
+                    })()}
                   </div>`).join('')
               : '<div style="font-size:12px;color:var(--text3);padding:8px 0">Tidak ada item detail.</div>'
           }
