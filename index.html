@@ -445,7 +445,9 @@ let activePhotoTab = 'GOOD';
 const CONFIG_KEY = 'rchg_inspection_script_url';
 
 function getScriptUrl() {
-  return localStorage.getItem(CONFIG_KEY) || '';
+  // Hardcoded default — override via ⚙ Config if needed
+  const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzf2v9OkT-oOMC5SkAHE34Pyb8ThrfS3mB6ZcjJOQ7T7oVJKdaP5UiHRX18shAogOs8UA/exec';
+  return localStorage.getItem(CONFIG_KEY) || DEFAULT_URL;
 }
 
 function openConfig() {
