@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RCHG Inspection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #0e0f11;
+  --surface: #15171a;
+  --surface2: #1c1f23;
+  --border: #2a2d32;
+  --border2: #363a40;
+  --accent: #f0b429;
+  --accent2: #e8870a;
+  --text: #e8eaed;
+  --text2: #9aa0a9;
+  --text3: #5f666f;
+  --ok:   #34a853;
+  --warn: #fbbc04;
+  --bad:  #ea4335;
+  --info: #4285f4;
+  --r: 6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+/* ── HEADER ── */
+.header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+  height: 52px; position: sticky; top: 0; z-index: 100;
+}
+.logo { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing: 2px; }
+.hdiv { width: 1px; height: 18px; background: var(--border2); margin: 0 14px; }
+.htitle { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; }
+.hright { display: flex; align-items: center; gap: 12px; }
+.htime { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text3); }
+.sync-status { font-family: 'IBM Plex Mono', monospace; font-size: 10px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--text3); display: flex; align-items: center; gap: 5px; }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+.sync-status.connected .sync-dot { background: var(--ok); animation: pulse 2s infinite; }
+.sync-status.connected { color: var(--ok); border-color: rgba(52,168,83,0.3); }
+.sync-status.error .sync-dot { background: var(--bad); }
+.sync-status.error { color: var(--bad); border-color: rgba(234,67,53,0.3); }
+.sync-status.syncing .sync-dot { background: var(--accent); animation: pulse 0.5s infinite; }
+.sync-status.syncing { color: var(--accent); border-color: rgba(240,180,41,0.3); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── LAYOUT ── */
+.main { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 52px); }
+
+/* ── SIDEBAR ── */
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.s-top { padding: 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.s-items { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+.s-bottom { padding: 14px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.plabel { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+.fg { margin-bottom: 10px; }
+.fl { font-size: 11px; font-weight: 500; color: var(--text2); margin-bottom: 4px; display: block; }
+.fi { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 7px 10px; color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; outline: none; transition: border-color 0.15s; }
+.fi:focus { border-color: var(--accent); }
+.fi::placeholder { color: var(--text3); }
+
+/* ── ITEM CARDS ── */
+.icard { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 9px 11px; cursor: pointer; transition: border-color 0.15s, background 0.15s; display: flex; align-items: center; gap: 9px; }
+.icard:hover { border-color: var(--border2); }
+.icard.active { border-color: var(--accent); background: rgba(240,180,41,0.05); }
+.ithumb { width: 38px; height: 38px; border-radius: 4px; background: var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.ithumb img { width: 100%; height: 100%; object-fit: cover; }
+.imeta { flex: 1; min-width: 0; }
+.iname { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text3); margin-top: 1px; }
+.isync-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.isync-dot.saved   { background: var(--ok); }
+.isync-dot.unsaved { background: var(--warn); }
+.isync-dot.synced  { background: var(--info); }
+
+.cbadge { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; flex-shrink: 0; }
+.cb-GOOD    { background: rgba(52,168,83,0.15);  color: var(--ok);   border: 1px solid rgba(52,168,83,0.25); }
+.cb-MINOR   { background: rgba(251,188,4,0.12);  color: var(--warn); border: 1px solid rgba(251,188,4,0.25); }
+.cb-DAMAGED { background: rgba(234,67,53,0.12);  color: var(--bad);  border: 1px solid rgba(234,67,53,0.25); }
+.cb-MISSING { background: rgba(66,133,244,0.12); color: var(--info); border: 1px solid rgba(66,133,244,0.25); }
+.cb-        { background: var(--surface); color: var(--text3); border: 1px solid var(--border); }
+
+/* ── BUTTONS ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 16px; border-radius: var(--r); font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; border: none; transition: all 0.15s; width: 100%; }
+.btn-primary { background: var(--accent); color: #0e0f11; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-secondary { background: transparent; border: 1px solid var(--border2); color: var(--text2); }
+.btn-secondary:hover { border-color: var(--text2); color: var(--text); }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text3); font-size: 11px; padding: 7px 12px; }
+.btn-ghost:hover { border-color: var(--border2); color: var(--text2); }
+.btn-danger { background: transparent; border: 1px solid rgba(234,67,53,0.3); color: var(--bad); }
+.btn-danger:hover { background: rgba(234,67,53,0.08); }
+.btn-sync { background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.3); color: var(--info); }
+.btn-sync:hover { background: rgba(66,133,244,0.18); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── CONTENT ── */
+.content { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+/* ── STATS STRIP ── */
+.stats-strip { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sc { flex: 1; padding: 11px 14px; border-right: 1px solid var(--border); }
+.sc:last-child { border-right: none; }
+.sv { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700; line-height: 1; color: var(--text); }
+.sv.ok { color: var(--ok); } .sv.warn { color: var(--warn); } .sv.bad { color: var(--bad); } .sv.inf { color: var(--info); }
+.sl { font-size: 9px; color: var(--text3); letter-spacing: 0.5px; margin-top: 2px; }
+
+/* ── EMPTY ── */
+.empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text3); gap: 12px; }
+.empty-icon { font-size: 44px; opacity: 0.35; }
+.empty-title { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text2); }
+.empty-sub { font-size: 12px; text-align: center; max-width: 240px; line-height: 1.6; }
+
+/* ── FORM ── */
+.form-scroll { flex: 1; overflow-y: auto; }
+.form-body { padding: 24px 28px; display: flex; flex-direction: column; }
+.fsec { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.fsec:last-child { border-bottom: none; }
+.stitle { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.stitle::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── QTY ── */
+.qty-row { display: flex; align-items: center; gap: 16px; }
+.qty-block { display: flex; flex-direction: column; gap: 4px; }
+.qty-label { font-size: 11px; color: var(--text2); font-weight: 500; }
+.qty-controls { display: flex; align-items: center; }
+.qty-btn { width: 36px; height: 36px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.1s; user-select: none; }
+.qty-btn:first-child { border-radius: var(--r) 0 0 var(--r); }
+.qty-btn:last-child  { border-radius: 0 var(--r) var(--r) 0; }
+.qty-btn:hover { background: var(--border2); }
+.qty-val { width: 60px; height: 36px; background: var(--surface2); border: 1px solid var(--border); border-left: none; border-right: none; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700; text-align: center; outline: none; }
+
+/* ── CONDITION ── */
+.cond-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; }
+.copt { border: 1.5px solid var(--border); border-radius: var(--r); padding: 12px 14px; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 10px; }
+.copt input { display: none; }
+.copt-icon { font-size: 18px; }
+.copt-name { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.copt-desc { font-size: 10px; color: var(--text3); margin-top: 1px; }
+.copt.sel[data-v="GOOD"]    { border-color: var(--ok);   background: rgba(52,168,83,0.07); }
+.copt.sel[data-v="MINOR"]   { border-color: var(--warn); background: rgba(251,188,4,0.07); }
+.copt.sel[data-v="DAMAGED"] { border-color: var(--bad);  background: rgba(234,67,53,0.07); }
+.copt.sel[data-v="MISSING"] { border-color: var(--info); background: rgba(66,133,244,0.07); }
+
+/* ── PHOTO TABS ── */
+.photo-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.ptab { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 4px 12px; border-radius: 20px; cursor: pointer; border: 1px solid var(--border); color: var(--text3); background: var(--surface2); transition: all 0.15s; letter-spacing: 0.5px; }
+.ptab.active-GOOD    { border-color: var(--ok);   color: var(--ok);   background: rgba(52,168,83,0.1); }
+.ptab.active-MINOR   { border-color: var(--warn); color: var(--warn); background: rgba(251,188,4,0.1); }
+.ptab.active-DAMAGED { border-color: var(--bad);  color: var(--bad);  background: rgba(234,67,53,0.1); }
+.ptab.active-MISSING { border-color: var(--info); color: var(--info); background: rgba(66,133,244,0.1); }
+
+.photo-cond-section { display: none; }
+.photo-cond-section.visible { display: block; }
+
+.upload-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.uslot { aspect-ratio: 1; background: var(--surface2); border: 2px dashed var(--border); border-radius: var(--r); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; transition: border-color 0.15s; }
+.uslot:hover { border-color: var(--border2); }
+.uslot.has-img { border-style: solid; border-color: var(--border); }
+.uslot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.uslot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.uslot-icon { font-size: 18px; color: var(--text3); pointer-events: none; }
+.uslot-txt { font-family: 'IBM Plex Mono', monospace; font-size: 8px; color: var(--text3); margin-top: 3px; pointer-events: none; }
+.uslot-cond-dot { position: absolute; bottom: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; z-index: 5; }
+.dot-GOOD { background: var(--ok); } .dot-MINOR { background: var(--warn); } .dot-DAMAGED { background: var(--bad); } .dot-MISSING { background: var(--info); }
+.urm { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; background: rgba(0,0,0,0.75); border-radius: 50%; display: none; align-items: center; justify-content: center; color: #fff; font-size: 9px; cursor: pointer; z-index: 10; border: none; }
+.uslot.has-img:hover .urm { display: flex; }
+
+/* ── DESC ── */
+.desc-ta { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; outline: none; resize: vertical; min-height: 90px; transition: border-color 0.15s; line-height: 1.6; }
+.desc-ta:focus { border-color: var(--accent); }
+.desc-ta::placeholder { color: var(--text3); }
+
+/* ── ACTIONS BAR ── */
+.abar { padding: 14px 28px; border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.abar-l { display: flex; gap: 8px; }
+.abar-r { display: flex; gap: 8px; }
+.abar .btn { width: auto; padding: 8px 18px; }
+
+/* ── CONFIG MODAL ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; display: none; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 10px; padding: 28px; width: 480px; max-width: 90vw; }
+.modal-title { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 1px; margin-bottom: 20px; }
+.modal-desc { font-size: 12px; color: var(--text2); line-height: 1.7; margin-bottom: 18px; }
+.modal-desc code { font-family: 'IBM Plex Mono', monospace; background: var(--surface2); padding: 2px 6px; border-radius: 3px; color: var(--accent); font-size: 11px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.modal-actions .btn { flex: 1; }
+
+/* ── TOAST ── */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border2); border-radius: var(--r); padding: 9px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); opacity: 0; transform: translateY(6px); transition: all 0.2s; pointer-events: none; z-index: 9999; max-width: 320px; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { border-color: var(--ok); color: var(--ok); }
+.toast.error   { border-color: var(--bad); color: var(--bad); }
+.toast.info    { border-color: var(--info); color: var(--info); }
+
+/* ── LOADING ── */
+.loading { position: fixed; inset: 0; background: rgba(14,15,17,0.88); display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; z-index: 10000; }
+.loading.show { display: flex; }
+.spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-txt { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text2); letter-spacing: 1px; }
+
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+#pdf-preview { position: fixed; left: -9999px; top: 0; width: 900px; background: #fff; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div style="display:flex;align-items:center">
+    <div class="logo">RCHG</div>
+    <div class="hdiv"></div>
+    <div class="htitle">Inspection</div>
+  </div>
+  <div class="hright">
+    <div class="sync-status" id="sync-status">
+      <div class="sync-dot"></div>
+      <span id="sync-label">Not configured</span>
+    </div>
+    <div class="htime" id="htime"></div>
+    <button class="btn btn-ghost" style="width:auto;padding:5px 12px;font-size:10px" onclick="openConfig()">⚙ Config</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+  <aside class="sidebar">
+    <div class="s-top">
+      <div class="plabel">Info Sesi</div>
+      <div class="fg">
+        <label class="fl">Inspector</label>
+        <input class="fi" id="inspector" placeholder="Nama lo..." value="Kevin">
+      </div>
+      <div class="fg">
+        <label class="fl">Lokasi</label>
+        <input class="fi" id="location" placeholder="e.g. Gudang Malatek, Jakarta">
+      </div>
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">Catatan</label>
+        <input class="fi" id="snotes" placeholder="Opsional...">
+      </div>
+    </div>
+
+    <div class="s-items">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="plabel" style="margin:0">Barang</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3)" id="icount-lbl">0 item</span>
+      </div>
+      <div id="ilist"></div>
+      <button class="btn btn-secondary" style="margin-top:6px" onclick="addItem()">+ Tambah Barang</button>
+    </div>
+
+    <div class="s-bottom">
+      <button class="btn btn-sync" onclick="syncToSheet()">☁ Simpan ke GSheet</button>
+      <button class="btn btn-primary" onclick="exportPDF()">⬇ Export PDF</button>
+      <button class="btn btn-ghost" onclick="resetAll()">Reset Session</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <div class="stats-strip">
+      <div class="sc"><div class="sv" id="s-total">0</div><div class="sl">TOTAL ITEM</div></div>
+      <div class="sc"><div class="sv" id="s-qty">0</div><div class="sl">TOTAL QTY</div></div>
+      <div class="sc"><div class="sv ok" id="s-good">0</div><div class="sl">GOOD</div></div>
+      <div class="sc"><div class="sv warn" id="s-minor">0</div><div class="sl">MINOR</div></div>
+      <div class="sc"><div class="sv bad" id="s-damaged">0</div><div class="sl">DAMAGED</div></div>
+      <div class="sc"><div class="sv inf" id="s-missing">0</div><div class="sl">MISSING</div></div>
+    </div>
+
+    <div class="empty" id="empty">
+      <div class="empty-icon">📦</div>
+      <div class="empty-title">Belum ada barang</div>
+      <div class="empty-sub">Klik "+ Tambah Barang" untuk mulai inspeksi.</div>
+    </div>
+
+    <div class="form-scroll" id="formscroll" style="display:none">
+      <div class="form-body">
+
+        <div class="fsec">
+          <div class="stitle">01 — Nama &amp; Jumlah</div>
+          <div class="fg">
+            <label class="fl">Nama Barang *</label>
+            <input class="fi" id="iname" placeholder="e.g. PowerBank Terminal, Kabel USB-C..." oninput="sync()">
+          </div>
+          <div class="qty-row">
+            <div class="qty-block">
+              <div class="qty-label">Jumlah Diterima</div>
+              <div class="qty-controls">
+                <button class="qty-btn" onclick="adjustQty(-1)">−</button>
+                <input class="qty-val" type="number" id="qty" value="0" min="0" oninput="sync()">
+                <button class="qty-btn" onclick="adjustQty(1)">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fsec">
+          <div class="stitle">02 — Kondisi Barang</div>
+          <div class="cond-grid">
+            <label class="copt" data-v="GOOD" onclick="setCond('GOOD')">
+              <input type="radio" name="cond" value="GOOD">
+              <div class="copt-icon">✅</div>
+              <div><div class="copt-name" style="color:var(--ok)">Good</div><div class="copt-desc">Lengkap, tidak ada masalah</div></div>
+            </label>
+            <label class="copt" data-v="MINOR" onclick="setCond('MINOR')">
+              <input type="radio" name="cond" value="MINOR">
+              <div class="copt-icon">⚠️</div>
+              <div><div class="copt-name" style="color:var(--warn)">Minor Issue</div><div class="copt-desc">Kerusakan kecil, masih oke</div></div>
+            </label>
+            <label class="copt" data-v="DAMAGED" onclick="setCond('DAMAGED')">
+              <input type="radio" name="cond" value="DAMAGED">
+              <div class="copt-icon">🔴</div>
+              <div><div class="copt-name" style="color:var(--bad)">Damaged</div><div class="copt-desc">Rusak, perlu klaim / retur</div></div>
+            </label>
+            <label class="copt" data-v="MISSING" onclick="setCond('MISSING')">
+              <input type="radio" name="cond" value="MISSING">
+              <div class="copt-icon">❓</div>
+              <div><div class="copt-name" style="color:var(--info)">Missing</div><div class="copt-desc">Tidak ada di shipment</div></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="fsec">
+          <div class="stitle">03 — Foto per Kondisi</div>
+          <div class="photo-tabs" id="photo-tabs">
+            <div class="ptab active-GOOD"    data-tab="GOOD"    onclick="switchPhotoTab('GOOD')">✅ Good</div>
+            <div class="ptab active-MINOR"   data-tab="MINOR"   onclick="switchPhotoTab('MINOR')">⚠️ Minor</div>
+            <div class="ptab active-DAMAGED" data-tab="DAMAGED" onclick="switchPhotoTab('DAMAGED')">🔴 Damaged</div>
+            <div class="ptab active-MISSING" data-tab="MISSING" onclick="switchPhotoTab('MISSING')">❓ Missing</div>
+          </div>
+          <div id="photo-sections"></div>
+        </div>
+
+        <div class="fsec">
+          <div class="stitle">04 — Deskripsi &amp; Catatan</div>
+          <textarea class="desc-ta" id="idesc" placeholder="Detail kondisi, catatan khusus, dsb..." oninput="sync()"></textarea>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="abar" id="abar" style="display:none">
+      <div class="abar-l">
+        <button class="btn btn-danger" onclick="deleteItem()">🗑 Hapus</button>
+      </div>
+      <div class="abar-r">
+        <button class="btn btn-secondary" onclick="addItem()">+ Baru</button>
+        <button class="btn btn-primary" onclick="saveItem()">Simpan ✓</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- CONFIG MODAL -->
+<div class="modal-overlay" id="config-modal">
+  <div class="modal">
+    <div class="modal-title">⚙ KONFIGURASI GSHEET</div>
+    <div class="modal-desc">
+      Paste URL dari Google Apps Script Web App deployment lo di sini.<br><br>
+      Format URL: <code>https://script.google.com/macros/s/XXXX/exec</code>
+    </div>
+    <div class="fg">
+      <label class="fl">Apps Script Web App URL</label>
+      <input class="fi" id="config-url" placeholder="https://script.google.com/macros/s/.../exec" style="font-size:11px;font-family:'IBM Plex Mono',monospace">
+    </div>
+    <div class="modal-desc" style="margin-top:8px;margin-bottom:0;font-size:11px;color:var(--text3)">
+      URL disimpan di <code>localStorage</code> browser lo — tidak ke server manapun.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeConfig()">Batal</button>
+      <button class="btn btn-sync" onclick="testConnection()">Test Koneksi</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div id="pdf-preview"></div>
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading"><div class="spinner"></div><div class="loading-txt" id="loading-txt">LOADING...</div></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let items = [];
+let cur   = null;
+let sessionId = generateId('SES');
+const CONDITIONS  = ['GOOD','MINOR','DAMAGED','MISSING'];
+const COND_META   = {
+  GOOD:    { label:'Good',        color:'#34a853', icon:'✅' },
+  MINOR:   { label:'Minor Issue', color:'#fbbc04', icon:'⚠️' },
+  DAMAGED: { label:'Damaged',     color:'#ea4335', icon:'🔴' },
+  MISSING: { label:'Missing',     color:'#4285f4', icon:'❓' },
+};
+const MAX_PER_COND = 8;
+let activePhotoTab = 'GOOD';
+
+// ═══════════════════════════════════════════════════════
+// CONFIG / GSHEET
+// ═══════════════════════════════════════════════════════
+const CONFIG_KEY = 'rchg_inspection_script_url';
+
+function getScriptUrl() {
+  return localStorage.getItem(CONFIG_KEY) || '';
+}
+
+function openConfig() {
+  document.getElementById('config-url').value = getScriptUrl();
+  document.getElementById('config-modal').classList.add('show');
+}
+function closeConfig() {
+  document.getElementById('config-modal').classList.remove('show');
+}
+
+function saveConfig() {
+  const url = document.getElementById('config-url').value.trim();
+  if (!url) { toast('URL tidak boleh kosong','error'); return; }
+  if (!url.includes('script.google.com')) { toast('URL tidak valid','error'); return; }
+  localStorage.setItem(CONFIG_KEY, url);
+  closeConfig();
+  checkConnection();
+  toast('✓ Config tersimpan','success');
+}
+
+async function testConnection() {
+  const url = document.getElementById('config-url').value.trim();
+  if (!url) { toast('Isi URL dulu','error'); return; }
+  setSync('syncing','Testing...');
+  try {
+    const res = await fetch(`${url}?action=ping`, { redirect:'follow' });
+    const data = await res.json();
+    if (data.ok) {
+      setSync('connected','Connected');
+      toast('✓ Koneksi berhasil!','success');
+    } else {
+      setSync('error','Error');
+      toast('Response error: ' + JSON.stringify(data),'error');
+    }
+  } catch(e) {
+    setSync('error','Failed');
+    toast('Koneksi gagal: ' + e.message,'error');
+  }
+}
+
+async function checkConnection() {
+  const url = getScriptUrl();
+  if (!url) { setSync('','Not configured'); return; }
+  setSync('syncing','Checking...');
+  try {
+    const res = await fetch(`${url}?action=ping`, { redirect:'follow' });
+    const data = await res.json();
+    if (data.ok) setSync('connected','Connected');
+    else setSync('error','Error');
+  } catch(e) {
+    setSync('error','Offline');
+  }
+}
+
+function setSync(state, label) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-status' + (state ? ' ' + state : '');
+  document.getElementById('sync-label').textContent = label;
+}
+
+// ── POST to Apps Script via form-trick (no CORS preflight) ──
+async function postToScript(action, body) {
+  const url = getScriptUrl();
+  if (!url) throw new Error('Apps Script URL belum dikonfigurasi. Klik ⚙ Config.');
+
+  const res = await fetch(`${url}?action=${action}`, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain' }, // avoids CORS preflight
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+// ── SYNC SESSION TO GSHEET ──
+async function syncToSheet() {
+  if (!items.length) { toast('Tidak ada item!','error'); return; }
+  const unsaved = items.filter(i => !i.saved);
+  if (unsaved.length > 0) {
+    if (!confirm(`${unsaved.length} item belum di-Simpan. Tetap sync?`)) return;
+  }
+
+  setSync('syncing','Syncing...');
+  showLoading('SYNCING TO GSHEET...');
+
+  try {
+    const inspector = document.getElementById('inspector').value || '—';
+    const location  = document.getElementById('location').value  || '—';
+    const notes     = document.getElementById('snotes').value    || '';
+
+    const payload = {
+      session_id:    sessionId,
+      inspector,
+      location,
+      notes,
+      total_items:   items.length,
+      total_qty:     items.reduce((s,i)=>s+(parseInt(i.qty)||0),0),
+      good_count:    items.filter(i=>i.condition==='GOOD').length,
+      minor_count:   items.filter(i=>i.condition==='MINOR').length,
+      damaged_count: items.filter(i=>i.condition==='DAMAGED').length,
+      missing_count: items.filter(i=>i.condition==='MISSING').length,
+      items: items.map(i => ({
+        id:        i.id,
+        name:      i.name,
+        qty:       i.qty,
+        condition: i.condition,
+        photos:    i.photos, // sends photo counts per condition
+        desc:      i.desc
+      }))
+    };
+
+    const result = await postToScript('submitSession', payload);
+    setSync('connected','Synced ✓');
+    toast(`✓ ${result.rows_written} item tersimpan ke GSheet!`, 'success');
+
+    // Mark all items as synced
+    items.forEach(i => { i.synced = true; });
+    renderList();
+
+  } catch(e) {
+    setSync('error','Sync failed');
+    toast('Sync gagal: ' + e.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ITEM CRUD
+// ═══════════════════════════════════════════════════════
+function generateId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+}
+
+function addItem() {
+  const id = generateId('ITM');
+  items.push({
+    id, name:'', qty:0,
+    condition:'',
+    photos:{ GOOD:[], MINOR:[], DAMAGED:[], MISSING:[] },
+    desc:'', saved:false, synced:false
+  });
+  openItem(id);
+}
+
+function openItem(id) {
+  cur = id;
+  const item = getItem(); if (!item) return;
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('formscroll').style.display = 'block';
+  document.getElementById('abar').style.display = 'flex';
+
+  document.getElementById('iname').value = item.name;
+  document.getElementById('qty').value   = item.qty;
+  document.getElementById('idesc').value = item.desc;
+
+  document.querySelectorAll('.copt').forEach(o => o.classList.remove('sel'));
+  if (item.condition) {
+    const el = document.querySelector(`.copt[data-v="${item.condition}"]`);
+    if (el) el.classList.add('sel');
+  }
+
+  buildPhotoSections();
+  switchPhotoTab(item.condition || 'GOOD');
+  renderList();
+}
+
+function getItem() { return items.find(i => i.id === cur) || null; }
+
+function sync() {
+  const item = getItem(); if (!item) return;
+  item.name  = document.getElementById('iname').value;
+  item.qty   = parseInt(document.getElementById('qty').value) || 0;
+  item.desc  = document.getElementById('idesc').value;
+  item.synced = false;
+  renderList(); updateStats();
+}
+
+function setCond(v) {
+  document.querySelectorAll('.copt').forEach(o => o.classList.remove('sel'));
+  document.querySelector(`.copt[data-v="${v}"]`).classList.add('sel');
+  const item = getItem(); if (!item) return;
+  item.condition = v;
+  item.synced = false;
+  switchPhotoTab(v);
+  renderList(); updateStats();
+}
+
+function adjustQty(delta) {
+  const el = document.getElementById('qty');
+  el.value = Math.max(0, (parseInt(el.value)||0) + delta);
+  sync();
+}
+
+function saveItem() {
+  const item = getItem(); if (!item) return;
+  sync();
+  if (!item.name.trim()) { toast('Nama barang wajib diisi!','error'); return; }
+  if (!item.condition)   { toast('Pilih kondisi barang!','error'); return; }
+  item.saved  = true;
+  item.synced = false;
+  renderList(); updateStats();
+  toast('✓ Tersimpan','success');
+}
+
+function deleteItem() {
+  if (!confirm('Hapus item ini?')) return;
+  items = items.filter(i => i.id !== cur);
+  cur = null;
+  if (items.length > 0) {
+    openItem(items[items.length-1].id);
+  } else {
+    document.getElementById('empty').style.display = 'flex';
+    document.getElementById('formscroll').style.display = 'none';
+    document.getElementById('abar').style.display = 'none';
+  }
+  renderList(); updateStats();
+}
+
+function resetAll() {
+  if (!confirm('Reset semua data sesi? Data yang belum di-sync ke GSheet akan hilang.')) return;
+  items = []; cur = null;
+  sessionId = generateId('SES'); // new session ID
+  document.getElementById('empty').style.display = 'flex';
+  document.getElementById('formscroll').style.display = 'none';
+  document.getElementById('abar').style.display = 'none';
+  document.getElementById('location').value = '';
+  document.getElementById('snotes').value = '';
+  renderList(); updateStats();
+  toast('Session direset');
+}
+
+// ═══════════════════════════════════════════════════════
+// PHOTO HANDLING
+// ═══════════════════════════════════════════════════════
+function buildPhotoSections() {
+  const container = document.getElementById('photo-sections');
+  container.innerHTML = '';
+  const item = getItem(); if (!item) return;
+
+  CONDITIONS.forEach(cond => {
+    const sec = document.createElement('div');
+    sec.className = 'photo-cond-section';
+    sec.id = `psec-${cond}`;
+    const grid = document.createElement('div');
+    grid.className = 'upload-grid';
+    grid.id = `pgrid-${cond}`;
+    const photos = item.photos[cond] || [];
+    for (let i = 0; i < MAX_PER_COND; i++) {
+      grid.appendChild(makeSlot(cond, i, photos[i]));
+    }
+    sec.appendChild(grid);
+    container.appendChild(sec);
+  });
+}
+
+function makeSlot(cond, idx, imgSrc) {
+  const slot = document.createElement('div');
+  slot.className = 'uslot' + (imgSrc ? ' has-img' : '');
+  slot.id = `slot-${cond}-${idx}`;
+
+  if (imgSrc) {
+    const img = document.createElement('img');
+    img.src = imgSrc;
+    slot.appendChild(img);
+    const dot = document.createElement('div');
+    dot.className = `uslot-cond-dot dot-${cond}`;
+    slot.appendChild(dot);
+    const rm = document.createElement('button');
+    rm.className = 'urm'; rm.innerHTML = '✕';
+    rm.onclick = e => { e.stopPropagation(); removePhoto(cond, idx); };
+    slot.appendChild(rm);
+  } else {
+    const icon = document.createElement('div');
+    icon.className = 'uslot-icon'; icon.textContent = '📷';
+    const txt = document.createElement('div');
+    txt.className = 'uslot-txt';
+    txt.textContent = COND_META[cond].label.slice(0,3).toUpperCase() + ` ${idx+1}`;
+    slot.appendChild(icon); slot.appendChild(txt);
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.onchange = e => handleUpload(e, cond, idx);
+    slot.appendChild(inp);
+  }
+  return slot;
+}
+
+function handleUpload(e, cond, startIdx) {
+  const item = getItem(); if (!item) return;
+  const files = Array.from(e.target.files);
+  let slot = startIdx;
+  files.forEach(file => {
+    while (slot < MAX_PER_COND && item.photos[cond][slot]) slot++;
+    if (slot >= MAX_PER_COND) return;
+    const s = slot++;
+    const r = new FileReader();
+    r.onload = ev => {
+      item.photos[cond][s] = ev.target.result;
+      refreshSlot(cond, s, ev.target.result);
+      item.synced = false;
+      renderList();
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+function refreshSlot(cond, idx, src) {
+  const slot = document.getElementById(`slot-${cond}-${idx}`);
+  if (slot) slot.replaceWith(makeSlot(cond, idx, src));
+}
+
+function removePhoto(cond, idx) {
+  const item = getItem(); if (!item) return;
+  item.photos[cond][idx] = null;
+  item.synced = false;
+  refreshSlot(cond, idx, null);
+  renderList();
+}
+
+function switchPhotoTab(tab) {
+  activePhotoTab = tab;
+  document.querySelectorAll('.ptab').forEach(t => {
+    t.className = 'ptab';
+    if (t.dataset.tab === tab) t.classList.add(`active-${tab}`);
+  });
+  document.querySelectorAll('.photo-cond-section').forEach(s => s.classList.remove('visible'));
+  const sec = document.getElementById(`psec-${tab}`);
+  if (sec) sec.classList.add('visible');
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════
+function renderList() {
+  const list = document.getElementById('ilist');
+  document.getElementById('icount-lbl').textContent = `${items.length} item`;
+  if (!items.length) { list.innerHTML = ''; return; }
+
+  list.innerHTML = items.map(item => {
+    const allPhotos = CONDITIONS.flatMap(c => (item.photos[c]||[]).filter(Boolean));
+    const thumb = allPhotos[0];
+    const thumbHtml = thumb
+      ? `<div class="ithumb"><img src="${thumb}"></div>`
+      : `<div class="ithumb" style="font-size:16px;color:var(--text3)">📦</div>`;
+    const dotClass = item.synced ? 'synced' : item.saved ? 'saved' : 'unsaved';
+    return `<div class="icard ${item.id===cur?'active':''}" onclick="openItem('${item.id}')">
+      ${thumbHtml}
+      <div class="imeta">
+        <div class="iname">${item.name||'<span style="color:var(--text3)">Tanpa Nama</span>'}</div>
+        <div class="isub">qty ${item.qty}</div>
+      </div>
+      <span class="cbadge cb-${item.condition}">${item.condition||'—'}</span>
+      <div class="isync-dot ${dotClass}" title="${dotClass}"></div>
+    </div>`;
+  }).join('');
+}
+
+function updateStats() {
+  const total = items.length;
+  const qty   = items.reduce((s,i)=>s+(parseInt(i.qty)||0),0);
+  document.getElementById('s-total').textContent   = total;
+  document.getElementById('s-qty').textContent     = qty;
+  document.getElementById('s-good').textContent    = items.filter(i=>i.condition==='GOOD').length;
+  document.getElementById('s-minor').textContent   = items.filter(i=>i.condition==='MINOR').length;
+  document.getElementById('s-damaged').textContent = items.filter(i=>i.condition==='DAMAGED').length;
+  document.getElementById('s-missing').textContent = items.filter(i=>i.condition==='MISSING').length;
+}
+
+// ═══════════════════════════════════════════════════════
+// LOADING / TOAST
+// ═══════════════════════════════════════════════════════
+function showLoading(msg='LOADING...') {
+  document.getElementById('loading-txt').textContent = msg;
+  document.getElementById('loading').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+// ═══════════════════════════════════════════════════════
+// PDF EXPORT
+// ═══════════════════════════════════════════════════════
+async function exportPDF() {
+  if (!items.length) { toast('Tidak ada item!','error'); return; }
+  showLoading('GENERATING PDF...');
+  try {
+    const inspector = document.getElementById('inspector').value || '—';
+    const location  = document.getElementById('location').value  || '—';
+    const notes     = document.getElementById('snotes').value    || '';
+    const now       = new Date();
+    const dateStr   = now.toLocaleDateString('id-ID',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+    const timeStr   = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+    const totalItems = items.length;
+    const totalQty   = items.reduce((s,i)=>s+(parseInt(i.qty)||0),0);
+    const good    = items.filter(i=>i.condition==='GOOD').length;
+    const minor   = items.filter(i=>i.condition==='MINOR').length;
+    const damaged = items.filter(i=>i.condition==='DAMAGED').length;
+    const missing = items.filter(i=>i.condition==='MISSING').length;
+
+    const itemsHtml = items.map((item,idx) => {
+      const cm = COND_META[item.condition] || {label:'N/A',color:'#999',icon:''};
+      const allCondPhotos = CONDITIONS.map(c => {
+        const ps = (item.photos[c]||[]).filter(Boolean);
+        if (!ps.length) return '';
+        return `<div style="margin-bottom:10px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${COND_META[c].color};margin-bottom:5px;text-transform:uppercase">${COND_META[c].icon} ${COND_META[c].label}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${ps.map(p=>`<div style="position:relative;display:inline-block">
+              <img src="${p}" style="width:90px;height:90px;object-fit:cover;border-radius:4px;border:2px solid ${COND_META[c].color}40">
+              <div style="position:absolute;bottom:3px;right:3px;width:10px;height:10px;border-radius:50%;background:${COND_META[c].color};border:1.5px solid #fff"></div>
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('');
+      const hasPhotos = CONDITIONS.some(c=>(item.photos[c]||[]).filter(Boolean).length>0);
+      return `<div style="margin-bottom:22px;border:1px solid #e8e8e8;border-radius:8px;overflow:hidden;page-break-inside:avoid">
+        <div style="background:#f7f7f7;padding:11px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8e8e8">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:monospace;font-size:11px;color:#aaa">#${String(idx+1).padStart(2,'0')}</span>
+            <strong style="font-size:14px;color:#111">${item.name||'Tanpa Nama'}</strong>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:monospace;font-size:13px;font-weight:700;color:#111">QTY: ${item.qty}</span>
+            <span style="background:${cm.color};color:#fff;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px">${cm.label.toUpperCase()}</span>
+          </div>
+        </div>
+        <div style="padding:14px 16px">
+          ${item.desc?`<div style="font-size:12px;color:#444;line-height:1.6;background:#fafafa;padding:10px 12px;border-radius:4px;border-left:3px solid ${cm.color};margin-bottom:12px">${item.desc}</div>`:''}
+          ${hasPhotos?allCondPhotos:`<div style="font-size:11px;color:#bbb;text-align:center;padding:12px;background:#fafafa;border-radius:4px">Tidak ada foto</div>`}
+        </div>
+      </div>`;
+    }).join('');
+
+    const condRows = CONDITIONS.map(c=>{
+      const cnt = items.filter(i=>i.condition===c).length;
+      const qty = items.filter(i=>i.condition===c).reduce((s,i)=>s+(parseInt(i.qty)||0),0);
+      return `<tr>
+        <td style="padding:8px 12px;font-size:12px;color:${COND_META[c].color};font-weight:700">${COND_META[c].icon} ${COND_META[c].label}</td>
+        <td style="padding:8px 12px;font-family:monospace;font-size:13px;font-weight:700;text-align:center">${cnt}</td>
+        <td style="padding:8px 12px;font-family:monospace;font-size:13px;font-weight:700;text-align:center">${qty}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<div style="background:#fff;font-family:'Helvetica Neue',Arial,sans-serif;color:#111;padding:40px;width:900px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;padding-bottom:22px;border-bottom:3px solid #111">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:4px;color:#aaa;margin-bottom:6px">RECHARGE INDONESIA</div>
+          <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;line-height:1.1">INSPECTION<br>REPORT</div>
+          <div style="margin-top:8px;font-size:11px;color:#666">${location} · ${dateStr} · ${timeStr}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:#aaa;margin-bottom:3px">INSPECTOR</div>
+          <div style="font-size:18px;font-weight:700">${inspector}</div>
+          <div style="font-size:10px;color:#aaa;margin-top:8px">SESSION ID</div>
+          <div style="font-family:monospace;font-size:11px;color:#666">${sessionId}</div>
+          ${notes?`<div style="margin-top:8px;font-size:11px;color:#666;max-width:200px">${notes}</div>`:''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:28px">
+        ${[['TOTAL ITEM',totalItems,'#111'],['TOTAL QTY',totalQty,'#111'],['GOOD',good,'#34a853'],['MINOR',minor,'#f9a825'],['DAMAGED',damaged,'#ea4335'],['MISSING',missing,'#4285f4']]
+          .map(([l,v,c])=>`<div style="border:2px solid ${c==='#111'?'#e0e0e0':c};border-radius:8px;padding:14px 10px;text-align:center">
+            <div style="font-size:26px;font-weight:800;color:${c};line-height:1">${v}</div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:#aaa;margin-top:3px">${l}</div>
+          </div>`).join('')}
+      </div>
+      <div style="margin-bottom:28px">
+        <div style="font-size:9px;font-weight:700;letter-spacing:3px;color:#aaa;margin-bottom:10px">RINGKASAN KONDISI</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #e8e8e8;border-radius:6px;overflow:hidden">
+          <thead><tr style="background:#f5f5f5">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;color:#999">KONDISI</th>
+            <th style="padding:8px 12px;text-align:center;font-size:10px;letter-spacing:1px;color:#999">ITEM</th>
+            <th style="padding:8px 12px;text-align:center;font-size:10px;letter-spacing:1px;color:#999">QTY</th>
+          </tr></thead>
+          <tbody>${condRows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:3px;color:#aaa;margin-bottom:14px">DETAIL BARANG</div>
+      ${itemsHtml}
+      <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e0e0e0;display:flex;justify-content:space-between">
+        <div style="font-size:10px;color:#ccc">RCHG Inspection · ${sessionId} · ${now.toISOString()}</div>
+        <div style="font-size:10px;color:#ccc">${inspector}</div>
+      </div>
+    </div>`;
+
+    const preview = document.getElementById('pdf-preview');
+    preview.innerHTML = html;
+    await new Promise(r=>setTimeout(r,600));
+
+    const canvas = await html2canvas(preview,{scale:1.6,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',width:900,logging:false});
+    const {jsPDF} = window.jspdf;
+    const pdf = new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+    const iw = pw, ih = (canvas.height*pw)/canvas.width;
+    const imgData = canvas.toDataURL('image/jpeg',0.93);
+
+    if (ih<=ph) {
+      pdf.addImage(imgData,'JPEG',0,0,iw,ih);
+    } else {
+      let posY=0, rem=ih;
+      while(rem>0){
+        pdf.addImage(imgData,'JPEG',0,posY,iw,ih);
+        rem-=ph; posY-=ph;
+        if(rem>0) pdf.addPage();
+      }
+    }
+
+    const loc = (document.getElementById('location').value||'Inspection').replace(/[^a-z0-9]/gi,'_');
+    pdf.save(`RCHG-${loc}-${new Date().toISOString().slice(0,10)}.pdf`);
+    preview.innerHTML = '';
+    toast('✓ PDF berhasil di-export!','success');
+  } catch(e) {
+    console.error(e);
+    toast('Gagal: '+e.message,'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// CLOCK & INIT
+// ═══════════════════════════════════════════════════════
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('htime').textContent =
+    n.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})+
+    ' · '+n.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+},1000);
+
+updateStats();
+checkConnection();
+</script>
+</body>
+</html>
